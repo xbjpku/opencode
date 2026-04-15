@@ -1016,6 +1016,14 @@ export namespace Config {
             .describe("Token buffer for compaction. Leaves enough window to avoid overflow during compaction."),
         })
         .optional(),
+      sandbox: z
+        .object({
+          preload: z.string().optional().describe("Path to sandbox_preload.so shared library"),
+          supervisor: z.string().optional().describe("Path to supervisor binary"),
+          whitelist: z.string().optional().describe("Path to global whitelist.conf (copied as initial config for each session)"),
+          dir: z.string().optional().describe("Base directory for per-session sockets and whitelist files (default: /tmp/fastcode)"),
+        })
+        .optional(),
       experimental: z
         .object({
           disable_paste_summary: z.boolean().optional(),

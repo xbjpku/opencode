@@ -17,6 +17,7 @@ import { Shell } from "@/shell/shell"
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncate"
 import { Plugin } from "@/plugin"
+import { Config } from "@/config/config"
 import { Cause, Effect, Exit, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import * as CrossSpawnSpawner from "@/effect/cross-spawn-spawner"
@@ -287,12 +288,66 @@ async function ask(ctx: Tool.Context, scan: Scan) {
   })
 }
 
+// Sandbox runtime state (toggled by /enable_sandbox)
+// Uses process.env so state is visible across main thread and worker
+export function toggleSandbox() {
+  const next = process.env.OPENCODE_SANDBOX !== "1"
+  process.env.OPENCODE_SANDBOX = next ? "1" : ""
+  return next
+}
+export function isSandboxEnabled() {
+  return process.env.OPENCODE_SANDBOX === "1"
+}
+
+// Track per-session supervisor processes
+const supervisors = new Map<string, { pid: number; dir: string }>()
+
+async function ensureSupervisor(sessionID: string, config: { supervisor?: string; whitelist?: string; dir?: string }) {
+  if (supervisors.has(sessionID))
+    return supervisors.get(sessionID)!
+
+  const dir = config.dir ?? "/tmp/fastcode"
+  const bin = config.supervisor ?? "supervisor"
+
+  const args = ["--session", sessionID, "--dir", dir]
+  if (config.whitelist)
+    args.push("--from", config.whitelist)
+
+  const proc = Process.spawn([bin, ...args], {
+    stdout: "ignore",
+    stderr: "pipe",
+  })
+
+  // Wait briefly for sockets to be created
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  const entry = { pid: proc.pid!, dir }
+  supervisors.set(sessionID, entry)
+
+  // Cleanup when supervisor exits
+  proc.exited.then(() => supervisors.delete(sessionID))
+
+  log.info("supervisor started", { sessionID, pid: proc.pid })
+  return entry
+}
+
 async function shellEnv(ctx: Tool.Context, cwd: string) {
   const extra = await Plugin.trigger("shell.env", { cwd, sessionID: ctx.sessionID, callID: ctx.callID }, { env: {} })
-  return {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...extra.env,
   }
+
+  const config = await Config.get()
+  log.info("sandbox config", { sandbox: config.sandbox ?? "not set" })
+  if (config.sandbox) {
+    const sv = await ensureSupervisor(ctx.sessionID, config.sandbox)
+    if (config.sandbox.preload)
+      env.LD_PRELOAD = config.sandbox.preload
+    env.SANDBOX_SOCK_PATH = `${sv.dir}/${ctx.sessionID}.notify.sock`
+  }
+
+  return env
 }
 
 function cmd(shell: string, name: string, command: string, cwd: string, env: NodeJS.ProcessEnv) {
