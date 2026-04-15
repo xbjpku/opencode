@@ -288,17 +288,6 @@ async function ask(ctx: Tool.Context, scan: Scan) {
   })
 }
 
-// Sandbox runtime state (toggled by /enable_sandbox)
-// Uses process.env so state is visible across main thread and worker
-export function toggleSandbox() {
-  const next = process.env.OPENCODE_SANDBOX !== "1"
-  process.env.OPENCODE_SANDBOX = next ? "1" : ""
-  return next
-}
-export function isSandboxEnabled() {
-  return process.env.OPENCODE_SANDBOX === "1"
-}
-
 // Track per-session supervisor processes
 const supervisors = new Map<string, { pid: number; dir: string }>()
 

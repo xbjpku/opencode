@@ -57,7 +57,6 @@ import open from "open"
 import { writeHeapSnapshot } from "v8"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
 import { TuiConfigProvider, useTuiConfig } from "./context/tui-config"
-import { toggleSandbox, isSandboxEnabled } from "@/tool/bash"
 import { TuiConfig } from "@/config/tui"
 import { createTuiApi, TuiPluginRuntime, type RouteMap } from "./plugin"
 import { FormatError, FormatUnknownError } from "@/cli/error"
@@ -450,7 +449,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   )
 
   const connected = useConnected()
-  const [sandboxOn, setSandboxOn] = createSignal(isSandboxEnabled())
   command.register(() => [
     {
       title: "Switch session",
@@ -714,23 +712,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         dialog.clear()
       },
       category: "System",
-    },
-    {
-      title: sandboxOn() ? "Disable sandbox" : "Enable sandbox",
-      value: "sandbox.toggle",
-      category: "System",
-      slash: {
-        name: "enable_sandbox",
-      },
-      onSelect: (dialog) => {
-        const next = toggleSandbox()
-        setSandboxOn(next)
-        toast.show({
-          message: next ? "Sandbox enabled" : "Sandbox disabled",
-          variant: "info",
-        })
-        dialog.clear()
-      },
     },
     {
       title: "Exit the app",
