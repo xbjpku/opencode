@@ -3,7 +3,23 @@ import { Bus } from "@/bus"
 import { SessionID } from "@/session/schema"
 import z from "zod"
 
+export const CowEntrySchema = z.object({
+  orig_path: z.string(),
+  cow_path: z.string(),
+  operation: z.string(),
+  command: z.string(),
+  timestamp: z.number(),
+})
+
 export const TuiEvent = {
+  CowPending: BusEvent.define(
+    "tui.cow.pending",
+    z.object({
+      sessionID: SessionID.zod,
+      entries: z.array(CowEntrySchema),
+      deleted: z.array(z.string()),
+    }),
+  ),
   PromptAppend: BusEvent.define("tui.prompt.append", z.object({ text: z.string() })),
   CommandExecute: BusEvent.define(
     "tui.command.execute",

@@ -45,6 +45,8 @@ import { LLM } from "./llm"
 import { Shell } from "@/shell/shell"
 import { AppFileSystem } from "@/filesystem"
 import { Truncate } from "@/tool/truncate"
+import { listCowEntries, hasSupervisor } from "@/tool/bash"
+import { TuiEvent } from "@/cli/cmd/tui/event"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
 import { Cause, Effect, Exit, Layer, Option, Scope, ServiceMap } from "effect"
@@ -1558,6 +1560,19 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             )
             if (outcome === "break") break
             continue
+          }
+
+          // Post-task: check for pending COW changes
+          if (hasSupervisor(sessionID)) {
+            const cow = listCowEntries(sessionID)
+            if (cow && cow.count > 0) {
+              log.info("cow pending", { sessionID, count: cow.count })
+              yield* bus.publish(TuiEvent.CowPending, {
+                sessionID,
+                entries: cow.entries,
+                deleted: cow.deleted,
+              })
+            }
           }
 
           yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))

@@ -313,11 +313,91 @@ async function ensureSupervisor(sessionID: string, config: { supervisor?: string
   const entry = { pid: proc.pid!, dir }
   supervisors.set(sessionID, entry)
 
-  // Cleanup when supervisor exits
-  proc.exited.then(() => supervisors.delete(sessionID))
+  // Do NOT delete from the Map on proc exit: the supervisor binary runs as a
+  // daemon (forks and the parent exits immediately).  proc.exited fires for the
+  // short-lived parent, not the long-running daemon, so deleting here would
+  // remove a live supervisor from the Map.  querySupervisor already handles the
+  // case where the socket is unreachable by returning "".
 
   log.info("supervisor started", { sessionID, pid: proc.pid })
   return entry
+}
+
+// Query supervisor via ctrl socket (request-response).
+// Uses spawnSync + stdin pipe to avoid shell escaping issues.
+export function querySupervisor(sessionID: string, command: string): string {
+  const sv = supervisors.get(sessionID)
+  const dir = sv?.dir ?? "/tmp/fastcode"
+  const sockPath = `${dir}/${sessionID}.ctrl.sock`
+  try {
+    const { spawnSync } = require("child_process")
+    const script = [
+      `var c=require("net").createConnection(${JSON.stringify(sockPath)},function(){`,
+      `c.write(${JSON.stringify(command + "\n")})});`,
+      `var d="";c.on("data",function(k){d+=k});`,
+      `c.on("end",function(){process.stdout.write(d);process.exit(0)});`,
+      `c.on("error",function(e){process.stderr.write("ERR:"+e.message);process.exit(1)});`,
+      `setTimeout(function(){c.destroy();process.stdout.write(d);process.exit(0)},2000);`,
+    ].join("")
+    const result = spawnSync("node", ["-e", script], {
+      timeout: 5000,
+      encoding: "utf-8",
+    })
+    if (result.stderr) log.info("querySupervisor stderr", { stderr: result.stderr })
+    if (result.status !== 0) log.info("querySupervisor failed", { status: result.status, stderr: result.stderr })
+    return (result.stdout || "").trim()
+  } catch (e) {
+    log.info("querySupervisor exception", { error: String(e) })
+    return ""
+  }
+}
+
+// List pending COW entries from supervisor
+export function listCowEntries(sessionID: string): {
+  entries: Array<{
+    orig_path: string
+    cow_path: string
+    operation: string
+    command: string
+    timestamp: number
+  }>
+  deleted: string[]
+  count: number
+} | null {
+  const raw = querySupervisor(sessionID, "LIST_COW")
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
+}
+
+// Commit selected COW paths
+export function commitCow(sessionID: string, paths: string[]): { ok: boolean; committed?: number; error?: string } {
+  log.info("commitCow called", { sessionID, paths })
+  const cmd = `COMMIT ${JSON.stringify(paths)}`
+  log.info("commitCow command", { cmd })
+  const raw = querySupervisor(sessionID, cmd)
+  log.info("commitCow response", { raw })
+  if (!raw) return { ok: false, error: "no response" }
+  try { return JSON.parse(raw) } catch { return { ok: false, error: "parse error" } }
+}
+
+// Discard all COW state
+export function discardCow(sessionID: string): { ok: boolean } {
+  const raw = querySupervisor(sessionID, "DISCARD")
+  if (!raw) return { ok: false }
+  try { return JSON.parse(raw) } catch { return { ok: false } }
+}
+
+// Check if a session has a running supervisor.
+// Falls back to checking the socket file on disk in case the Map entry was
+// cleaned up (e.g. the supervisor binary daemonises and the parent exits).
+export function hasSupervisor(sessionID: string): boolean {
+  if (supervisors.has(sessionID)) return true
+  try {
+    const { statSync } = require("fs")
+    return statSync(`/tmp/fastcode/${sessionID}.ctrl.sock`).isSocket?.() ?? false
+  } catch {
+    return false
+  }
 }
 
 async function shellEnv(ctx: Tool.Context, cwd: string) {

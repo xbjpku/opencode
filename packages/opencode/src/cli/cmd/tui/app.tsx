@@ -46,6 +46,7 @@ import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
 import { DialogAlert } from "./ui/dialog-alert"
 import { DialogConfirm } from "./ui/dialog-confirm"
+import { DialogCowCommit } from "./ui/dialog-cow"
 import { ToastProvider, useToast } from "./ui/toast"
 import { ExitProvider, useExit } from "./context/exit"
 import { Session as SessionApi } from "@/session"
@@ -819,6 +820,13 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       variant: evt.properties.variant,
       duration: evt.properties.duration,
     })
+  })
+
+  ;(sdk.event as any).on(TuiEvent.CowPending.type, (evt: { properties: { sessionID: string; entries: any[]; deleted: string[] } }) => {
+    const { sessionID, entries, deleted } = evt.properties
+    if (entries.length > 0) {
+      DialogCowCommit.show(dialog, sessionID, entries, deleted)
+    }
   })
 
   sdk.event.on(TuiEvent.SessionSelect.type, (evt) => {
