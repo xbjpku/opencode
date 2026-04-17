@@ -46,6 +46,7 @@ import { Shell } from "@/shell/shell"
 import { AppFileSystem } from "@/filesystem"
 import { Truncate } from "@/tool/truncate"
 import { listCowEntries, hasSupervisor } from "@/tool/bash"
+import { Config } from "@/config/config"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
@@ -1564,7 +1565,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
           // Post-task: check for pending COW changes
           if (hasSupervisor(sessionID)) {
-            const cow = listCowEntries(sessionID)
+            const config = yield* Effect.promise(() => Config.get())
+            const reviewLevel = config.sandbox?.review ?? "medium"
+            const cow = listCowEntries(sessionID, reviewLevel)
             if (cow && cow.count > 0) {
               log.info("cow pending", { sessionID, count: cow.count })
               yield* bus.publish(TuiEvent.CowPending, {

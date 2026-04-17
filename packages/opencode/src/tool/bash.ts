@@ -352,19 +352,21 @@ export function querySupervisor(sessionID: string, command: string): string {
   }
 }
 
-// List pending COW entries from supervisor
-export function listCowEntries(sessionID: string): {
+// List pending COW entries from supervisor.
+// level: "strict" (all versions), "medium" (DAG simplified), "loose" (final only)
+export function listCowEntries(sessionID: string, level: string = "medium"): {
   entries: Array<{
     orig_path: string
     cow_path: string
     operation: string
     command: string
     timestamp: number
+    generation: number
   }>
   deleted: string[]
   count: number
 } | null {
-  const raw = querySupervisor(sessionID, "LIST_COW")
+  const raw = querySupervisor(sessionID, `LIST_COW ${level}`)
   if (!raw) return null
   try { return JSON.parse(raw) } catch { return null }
 }
@@ -376,6 +378,15 @@ export function commitCow(sessionID: string, paths: string[]): { ok: boolean; co
   log.info("commitCow command", { cmd })
   const raw = querySupervisor(sessionID, cmd)
   log.info("commitCow response", { raw })
+  if (!raw) return { ok: false, error: "no response" }
+  try { return JSON.parse(raw) } catch { return { ok: false, error: "parse error" } }
+}
+
+// Commit all COW changes with generation ≤ maxGen
+export function commitCowGen(sessionID: string, maxGen: number): { ok: boolean; committed?: number; error?: string } {
+  log.info("commitCowGen called", { sessionID, maxGen })
+  const raw = querySupervisor(sessionID, `COMMIT_GEN ${maxGen}`)
+  log.info("commitCowGen response", { raw })
   if (!raw) return { ok: false, error: "no response" }
   try { return JSON.parse(raw) } catch { return { ok: false, error: "parse error" } }
 }
@@ -602,6 +613,12 @@ export const BashTool = Tool.define("bash", async () => {
       const scan = await collect(root, cwd, ps, shell)
       if (!Instance.containsPath(cwd)) scan.dirs.add(cwd)
       await ask(ctx, scan)
+
+      // Notify supervisor that a new command is starting so it can track
+      // per-command COW snapshots (versioned copies of the same file).
+      if (hasSupervisor(ctx.sessionID)) {
+        querySupervisor(ctx.sessionID, "BEGIN_COMMAND")
+      }
 
       return run(
         {

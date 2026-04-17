@@ -1022,6 +1022,7 @@ export namespace Config {
           supervisor: z.string().optional().describe("Path to supervisor binary"),
           whitelist: z.string().optional().describe("Path to global whitelist.conf (copied as initial config for each session)"),
           dir: z.string().optional().describe("Base directory for per-session sockets and whitelist files (default: /tmp/fastcode)"),
+          review: z.enum(["strict", "medium", "loose"]).optional().describe("COW review level: strict (all versions), medium (DAG simplified, default), loose (final state only)"),
         })
         .optional(),
       experimental: z

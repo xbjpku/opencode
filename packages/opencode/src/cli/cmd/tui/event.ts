@@ -9,6 +9,7 @@ export const CowEntrySchema = z.object({
   operation: z.string(),
   command: z.string(),
   timestamp: z.number(),
+  generation: z.number(),
 })
 
 export const TuiEvent = {
