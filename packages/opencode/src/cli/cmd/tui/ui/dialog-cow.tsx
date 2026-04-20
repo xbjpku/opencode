@@ -173,10 +173,8 @@ export function DialogCowCommit(props: DialogCowProps) {
     const maxGen = g[store.cmdCursor].generation
     const result = commitCowGen(props.sessionID, maxGen)
     if (!result.ok) log.error("cow commitCowGen failed", { error: result.error, maxGen })
-    if (store.cmdCursor >= g.length - 1) {
-      const discard = discardCow(props.sessionID)
-      if (!discard.ok) log.error("cow discard failed", { sessionID: props.sessionID })
-    }
+    const discard = discardCow(props.sessionID)
+    if (!discard.ok) log.error("cow discard failed", { sessionID: props.sessionID })
     props.onDone?.()
     dialog.clear()
   }
